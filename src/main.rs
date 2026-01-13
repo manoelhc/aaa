@@ -2,10 +2,12 @@ use anyhow::{anyhow, Context, Result};
 use aws_credential_types::provider::ProvideCredentials;
 use clap::Parser;
 use colored::Colorize;
+use inquire::{Select, Text};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -14,7 +16,7 @@ use std::process::Command;
 #[command(about = "AWS Account Alternator - Manage AWS profiles and SSO authentication")]
 #[command(version)]
 struct Cli {
-    /// Profile name to use (if not specified, shows all profiles)
+    /// Profile name to use (if not specified, shows interactive menu)
     profile: Option<String>,
 }
 
@@ -24,7 +26,7 @@ struct AwsConfig {
     sections: HashMap<String, HashMap<String, String>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Profile {
     name: String,
     is_sso: bool,
@@ -51,11 +53,20 @@ fn parse_aws_config() -> Result<Vec<Profile>> {
     let config_path = get_aws_config_path()?;
     
     if !config_path.exists() {
-        return Err(anyhow!("AWS config file not found at {:?}", config_path));
+        // Create empty config if it doesn't exist
+        if let Some(parent) = config_path.parent() {
+            fs::create_dir_all(parent).context("Failed to create .aws directory")?;
+        }
+        fs::write(&config_path, "").context("Failed to create config file")?;
+        return Ok(Vec::new());
     }
 
     let content = fs::read_to_string(&config_path)
         .context("Failed to read AWS config file")?;
+
+    if content.trim().is_empty() {
+        return Ok(Vec::new());
+    }
 
     let mut profiles = Vec::new();
     let config: AwsConfig = serde_ini::from_str(&content)
@@ -88,63 +99,203 @@ fn parse_aws_config() -> Result<Vec<Profile>> {
     Ok(profiles)
 }
 
-fn list_profiles(profiles: &[Profile]) {
-    println!("{}", "Available AWS Profiles:".bold().green());
+fn create_new_profile() -> Result<Profile> {
     println!();
+    println!("{}", "Create New AWS SSO Profile".bold().green());
+    println!();
+
+    let profile_name = Text::new("Profile name:")
+        .with_help_message("A unique name for this profile (e.g., my-org-dev)")
+        .prompt()
+        .context("Failed to get profile name")?;
+
+    let sso_start_url = Text::new("SSO start URL:")
+        .with_help_message("The AWS SSO portal URL (e.g., https://my-sso-portal.awsapps.com/start)")
+        .prompt()
+        .context("Failed to get SSO start URL")?;
+
+    let sso_region = Text::new("SSO region:")
+        .with_default("us-east-1")
+        .with_help_message("The AWS region where your SSO directory is hosted")
+        .prompt()
+        .context("Failed to get SSO region")?;
+
+    let sso_account_id = Text::new("AWS account ID:")
+        .with_help_message("The 12-digit AWS account ID")
+        .prompt()
+        .context("Failed to get account ID")?;
+
+    let sso_role_name = Text::new("SSO role name:")
+        .with_help_message("The role name to assume (e.g., PowerUserAccess)")
+        .prompt()
+        .context("Failed to get role name")?;
+
+    let region = Text::new("Default region:")
+        .with_default("us-east-1")
+        .with_help_message("Default AWS region for this profile")
+        .prompt()
+        .context("Failed to get region")?;
+
+    let profile = Profile {
+        name: profile_name.clone(),
+        is_sso: true,
+        sso_start_url: Some(sso_start_url.clone()),
+        sso_region: Some(sso_region.clone()),
+        sso_account_id: Some(sso_account_id.clone()),
+        sso_role_name: Some(sso_role_name.clone()),
+        region: Some(region.clone()),
+    };
+
+    // Write profile to config file
+    save_profile_to_config(&profile)?;
+
+    println!();
+    println!("{}", "✓ Profile created successfully!".green().bold());
+    println!();
+
+    Ok(profile)
+}
+
+fn save_profile_to_config(profile: &Profile) -> Result<()> {
+    let config_path = get_aws_config_path()?;
     
-    for profile in profiles {
-        let profile_type = if profile.is_sso {
-            "SSO".yellow()
-        } else {
-            "Standard".blue()
-        };
-        
-        println!("  {} [{}]", profile.name.bold(), profile_type);
-        
-        if let Some(region) = &profile.region {
-            println!("    Region: {}", region);
-        }
-        
-        if profile.is_sso {
-            if let Some(url) = &profile.sso_start_url {
-                println!("    SSO URL: {}", url);
-            }
-            if let Some(account) = &profile.sso_account_id {
-                println!("    Account: {}", account);
-            }
-            if let Some(role) = &profile.sso_role_name {
-                println!("    Role: {}", role);
-            }
-        }
-        
-        println!();
+    // Ensure the directory exists
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent).context("Failed to create .aws directory")?;
     }
+
+    // Read existing content or create empty
+    let existing_content = if config_path.exists() {
+        fs::read_to_string(&config_path)
+            .context("Failed to read existing config file")?
+    } else {
+        String::new()
+    };
+
+    // Append new profile
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&config_path)
+        .context("Failed to open config file")?;
+
+    // Add newline if file is not empty
+    if !existing_content.is_empty() && !existing_content.ends_with('\n') {
+        writeln!(file)?;
+    }
+
+    // Write profile section
+    let section_name = if profile.name == "default" {
+        "[default]".to_string()
+    } else {
+        format!("[profile {}]", profile.name)
+    };
+
+    writeln!(file, "{}", section_name)?;
+    
+    if let Some(sso_start_url) = &profile.sso_start_url {
+        writeln!(file, "sso_start_url = {}", sso_start_url)?;
+    }
+    if let Some(sso_region) = &profile.sso_region {
+        writeln!(file, "sso_region = {}", sso_region)?;
+    }
+    if let Some(sso_account_id) = &profile.sso_account_id {
+        writeln!(file, "sso_account_id = {}", sso_account_id)?;
+    }
+    if let Some(sso_role_name) = &profile.sso_role_name {
+        writeln!(file, "sso_role_name = {}", sso_role_name)?;
+    }
+    if let Some(region) = &profile.region {
+        writeln!(file, "region = {}", region)?;
+    }
+
+    Ok(())
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let profiles = parse_aws_config()
+    let mut profiles = parse_aws_config()
         .context("Failed to parse AWS config")?;
 
-    if profiles.is_empty() {
-        println!("{}", "No AWS profiles found in ~/.aws/config".red());
+    // If profile specified via command line, use it directly
+    if let Some(profile_name) = cli.profile {
+        let profile = profiles.iter()
+            .find(|p| p.name == profile_name)
+            .ok_or_else(|| anyhow!("Profile '{}' not found", profile_name))?;
+
+        authenticate_and_spawn_shell(profile).await?;
         return Ok(());
     }
 
-    // If no profile specified, list all profiles
-    if cli.profile.is_none() {
-        list_profiles(&profiles);
-        println!("{}", "Usage: aaa <profile-name>".dimmed());
-        return Ok(());
+    // Interactive mode: show menu
+    loop {
+        let mut options: Vec<String> = Vec::new();
+        options.push("➕ Add a new profile".to_string());
+        
+        for profile in &profiles {
+            let profile_type = if profile.is_sso { "SSO" } else { "Standard" };
+            options.push(format!("   {} [{}]", profile.name, profile_type));
+        }
+
+        if profiles.is_empty() {
+            println!();
+            println!("{}", "No AWS profiles found.".yellow());
+            println!("{}", "Let's create your first profile!".cyan());
+            println!();
+        }
+
+        let selection = Select::new("Select a profile:", options)
+            .with_page_size(10)
+            .prompt();
+
+        match selection {
+            Ok(choice) => {
+                if choice.starts_with("➕") {
+                    // Create new profile
+                    match create_new_profile() {
+                        Ok(new_profile) => {
+                            profiles.push(new_profile.clone());
+                            authenticate_and_spawn_shell(&new_profile).await?;
+                            break;
+                        }
+                        Err(e) => {
+                            println!();
+                            println!("{} {}", "Error creating profile:".red(), e);
+                            println!();
+                            continue;
+                        }
+                    }
+                } else {
+                    // Extract profile name from selection (remove leading spaces and type indicator)
+                    let profile_name = choice
+                        .trim()
+                        .split('[')
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+
+                    if let Some(profile) = profiles.iter().find(|p| p.name == profile_name) {
+                        authenticate_and_spawn_shell(profile).await?;
+                        break;
+                    }
+                }
+            }
+            Err(_) => {
+                println!();
+                println!("{}", "Cancelled.".dimmed());
+                return Ok(());
+            }
+        }
     }
 
-    let profile_name = cli.profile.unwrap();
-    let profile = profiles.iter()
-        .find(|p| p.name == profile_name)
-        .ok_or_else(|| anyhow!("Profile '{}' not found", profile_name))?;
+    Ok(())
+}
 
+async fn authenticate_and_spawn_shell(profile: &Profile) -> Result<()> {
+    println!();
     println!("{} {}", "Using profile:".bold(), profile.name.green().bold());
     println!();
 
