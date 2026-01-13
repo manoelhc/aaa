@@ -107,7 +107,19 @@ fn create_new_profile() -> Result<Profile> {
     let profile_name = Text::new("Profile name:")
         .with_help_message("A unique name for this profile (e.g., my-org-dev)")
         .prompt()
-        .context("Failed to get profile name")?;
+        .context("Failed to get profile name")?
+        .trim()
+        .to_string();
+
+    if profile_name.is_empty() {
+        return Err(anyhow!("Profile name cannot be empty"));
+    }
+
+    // Check if profile already exists
+    let existing_profiles = parse_aws_config()?;
+    if existing_profiles.iter().any(|p| p.name == profile_name) {
+        return Err(anyhow!("Profile '{}' already exists", profile_name));
+    }
 
     let sso_start_url = Text::new("SSO start URL:")
         .with_help_message("The AWS SSO portal URL (e.g., https://my-sso-portal.awsapps.com/start)")
@@ -277,9 +289,21 @@ async fn main() -> Result<()> {
                         .trim()
                         .to_string();
 
+                    if profile_name.is_empty() {
+                        println!();
+                        println!("{}", "Invalid profile selection".red());
+                        println!();
+                        continue;
+                    }
+
                     if let Some(profile) = profiles.iter().find(|p| p.name == profile_name) {
                         authenticate_and_spawn_shell(profile).await?;
                         break;
+                    } else {
+                        println!();
+                        println!("{} {}", "Profile not found:".red(), profile_name);
+                        println!();
+                        continue;
                     }
                 }
             }
