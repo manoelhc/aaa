@@ -12,6 +12,7 @@ use std::process::Command;
 #[derive(Parser)]
 #[command(name = "aaa")]
 #[command(about = "AWS Account Alternator - Manage AWS profiles and SSO authentication")]
+#[command(version)]
 struct Cli {
     /// Profile name to use (if not specified, shows all profiles)
     profile: Option<String>,
@@ -34,22 +35,20 @@ struct Profile {
     region: Option<String>,
 }
 
-fn get_aws_config_path() -> PathBuf {
-    dirs::home_dir()
-        .expect("Could not find home directory")
-        .join(".aws")
-        .join("config")
+fn get_aws_config_path() -> Result<PathBuf> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| anyhow!("Could not find home directory"))?;
+    Ok(home.join(".aws").join("config"))
 }
 
-fn get_aws_credentials_path() -> PathBuf {
-    dirs::home_dir()
-        .expect("Could not find home directory")
-        .join(".aws")
-        .join("credentials")
+fn get_aws_credentials_path() -> Result<PathBuf> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| anyhow!("Could not find home directory"))?;
+    Ok(home.join(".aws").join("credentials"))
 }
 
 fn parse_aws_config() -> Result<Vec<Profile>> {
-    let config_path = get_aws_config_path();
+    let config_path = get_aws_config_path()?;
     
     if !config_path.exists() {
         return Err(anyhow!("AWS config file not found at {:?}", config_path));
@@ -190,7 +189,7 @@ async fn sso_login(profile: &Profile) -> Result<()> {
 }
 
 fn verify_credentials(profile: &Profile) -> Result<()> {
-    let creds_path = get_aws_credentials_path();
+    let creds_path = get_aws_credentials_path()?;
     
     if !creds_path.exists() {
         return Err(anyhow!(
@@ -261,7 +260,9 @@ fn spawn_shell_with_credentials(profile: &Profile, credentials: HashMap<String, 
     println!("{}", "Environment variables set:".dimmed());
     println!("{}", "  - AWS_ACCESS_KEY_ID".dimmed());
     println!("{}", "  - AWS_SECRET_ACCESS_KEY".dimmed());
-    println!("{}", "  - AWS_SESSION_TOKEN".dimmed());
+    if credentials.contains_key("AWS_SESSION_TOKEN") {
+        println!("{}", "  - AWS_SESSION_TOKEN".dimmed());
+    }
     println!("{}", "  - AWS_REGION".dimmed());
     println!("{}", "  - AWS_PROFILE".dimmed());
     println!();
