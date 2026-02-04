@@ -99,7 +99,7 @@ fn parse_aws_config() -> Result<Vec<Profile>> {
     Ok(profiles)
 }
 
-fn create_new_profile() -> Result<Profile> {
+fn create_new_sso_profile() -> Result<Profile> {
     println!();
     println!("{}", "Create New AWS SSO Profile".bold().green());
     println!();
@@ -166,6 +166,140 @@ fn create_new_profile() -> Result<Profile> {
     println!();
 
     Ok(profile)
+}
+
+fn create_new_credentials_profile() -> Result<Profile> {
+    println!();
+    println!("{}", "Create New AWS Credentials Profile".bold().green());
+    println!();
+
+    let profile_name = Text::new("Profile name:")
+        .with_help_message("A unique name for this profile (e.g., my-dev-account)")
+        .prompt()
+        .context("Failed to get profile name")?
+        .trim()
+        .to_string();
+
+    if profile_name.is_empty() {
+        return Err(anyhow!("Profile name cannot be empty"));
+    }
+
+    // Validate profile name - no special characters except hyphens and underscores
+    if !profile_name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        return Err(anyhow!("Profile name can only contain alphanumeric characters, hyphens, and underscores"));
+    }
+
+    // Check if profile already exists
+    let existing_profiles = parse_aws_config()?;
+    if existing_profiles.iter().any(|p| p.name == profile_name) {
+        return Err(anyhow!("Profile '{}' already exists", profile_name));
+    }
+
+    let access_key_id = Text::new("AWS Access Key ID:")
+        .with_help_message("Your AWS access key ID (starts with AKIA)")
+        .prompt()
+        .context("Failed to get access key ID")?
+        .trim()
+        .to_string();
+
+    if access_key_id.is_empty() {
+        return Err(anyhow!("Access Key ID cannot be empty"));
+    }
+
+    // Validate access key ID format
+    if !access_key_id.chars().all(|c| c.is_alphanumeric()) {
+        return Err(anyhow!("Access Key ID should only contain alphanumeric characters"));
+    }
+
+    let secret_access_key = Text::new("AWS Secret Access Key:")
+        .with_help_message("Your AWS secret access key")
+        .prompt()
+        .context("Failed to get secret access key")?
+        .trim()
+        .to_string();
+
+    if secret_access_key.is_empty() {
+        return Err(anyhow!("Secret Access Key cannot be empty"));
+    }
+
+    // Validate secret access key format (base64 characters)
+    if !secret_access_key.chars().all(|c| c.is_alphanumeric() || c == '+' || c == '/' || c == '=') {
+        return Err(anyhow!("Secret Access Key contains invalid characters"));
+    }
+
+    let region = Text::new("Default region:")
+        .with_default("us-east-1")
+        .with_help_message("Default AWS region for this profile")
+        .prompt()
+        .context("Failed to get region")?;
+
+    // Validate region format
+    if !region.chars().all(|c| c.is_alphanumeric() || c == '-') {
+        return Err(anyhow!("Region should only contain alphanumeric characters and hyphens"));
+    }
+
+    let profile = Profile {
+        name: profile_name.clone(),
+        is_sso: false,
+        sso_start_url: None,
+        sso_region: None,
+        sso_account_id: None,
+        sso_role_name: None,
+        region: Some(region.clone()),
+    };
+
+    // Write profile to config file
+    save_profile_to_config(&profile)?;
+
+    // Write credentials to credentials file
+    save_credentials_to_file(&profile_name, &access_key_id, &secret_access_key)?;
+
+    println!();
+    println!("{}", "✓ Profile created successfully!".green().bold());
+    println!();
+
+    Ok(profile)
+}
+
+fn save_credentials_to_file(profile_name: &str, access_key_id: &str, secret_access_key: &str) -> Result<()> {
+    let creds_path = get_aws_credentials_path()?;
+    
+    // Ensure the directory exists
+    if let Some(parent) = creds_path.parent() {
+        fs::create_dir_all(parent).context("Failed to create .aws directory")?;
+    }
+
+    // Read existing content or create empty
+    let existing_content = if creds_path.exists() {
+        fs::read_to_string(&creds_path)
+            .context("Failed to read existing credentials file")?
+    } else {
+        String::new()
+    };
+
+    // Check if profile already exists in credentials file
+    if existing_content.contains(&format!("[{}]", profile_name)) {
+        return Err(anyhow!("Profile '{}' already exists in credentials file", profile_name));
+    }
+
+    // Append new credentials
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&creds_path)
+        .context("Failed to open credentials file")?;
+
+    // Add newline if file is not empty
+    if !existing_content.is_empty() && !existing_content.ends_with('\n') {
+        writeln!(file)?;
+    }
+
+    // Write credentials section
+    writeln!(file, "[{}]", profile_name)?;
+    writeln!(file, "aws_access_key_id = {}", access_key_id)?;
+    writeln!(file, "aws_secret_access_key = {}", secret_access_key)?;
+
+    Ok(())
 }
 
 fn save_profile_to_config(profile: &Profile) -> Result<()> {
@@ -244,7 +378,8 @@ async fn main() -> Result<()> {
     // Interactive mode: show menu
     loop {
         let mut options: Vec<String> = Vec::new();
-        options.push("➕ Add a new profile".to_string());
+        options.push("➕ Add a new SSO profile".to_string());
+        options.push("➕ Add a new credentials profile".to_string());
         
         for profile in &profiles {
             let profile_type = if profile.is_sso { "SSO" } else { "Standard" };
@@ -264,9 +399,24 @@ async fn main() -> Result<()> {
 
         match selection {
             Ok(choice) => {
-                if choice.starts_with("➕") {
-                    // Create new profile
-                    match create_new_profile() {
+                if choice.starts_with("➕ Add a new SSO profile") {
+                    // Create new SSO profile
+                    match create_new_sso_profile() {
+                        Ok(new_profile) => {
+                            profiles.push(new_profile.clone());
+                            authenticate_and_spawn_shell(&new_profile).await?;
+                            break;
+                        }
+                        Err(e) => {
+                            println!();
+                            println!("{} {}", "Error creating profile:".red(), e);
+                            println!();
+                            continue;
+                        }
+                    }
+                } else if choice.starts_with("➕ Add a new credentials profile") {
+                    // Create new credentials profile
+                    match create_new_credentials_profile() {
                         Ok(new_profile) => {
                             profiles.push(new_profile.clone());
                             authenticate_and_spawn_shell(&new_profile).await?;
