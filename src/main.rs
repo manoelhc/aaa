@@ -293,14 +293,6 @@ fn save_credentials_to_file(profile_name: &str, access_key_id: &str, secret_acce
         String::new()
     };
 
-    // Check if profile already exists in credentials file using precise line matching
-    let profile_section = format!("[{}]", profile_name);
-    for line in existing_content.lines() {
-        if line.trim() == profile_section {
-            return Err(anyhow!("Profile '{}' already exists in credentials file", profile_name));
-        }
-    }
-
     // Append new credentials
     let mut file = fs::OpenOptions::new()
         .create(true)

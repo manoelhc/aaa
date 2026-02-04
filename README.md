@@ -78,7 +78,7 @@ After creating the profile, the tool automatically proceeds to authentication!
 When you select "Add a new credentials profile", you'll be prompted for:
 
 1. **Profile name**: A unique identifier (e.g., `my-dev-account`)
-2. **AWS Access Key ID**: Your AWS access key ID (starts with AKIA)
+2. **AWS Access Key ID**: Your AWS access key ID (e.g., AKIA... for permanent credentials, ASIA... for temporary credentials)
 3. **AWS Secret Access Key**: Your AWS secret access key
 4. **Default region**: Default AWS region for this profile (default: `us-east-1`)
 
