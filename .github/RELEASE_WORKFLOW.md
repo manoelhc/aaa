@@ -12,9 +12,10 @@ The workflow generates the following packages:
 
 1. **Ubuntu/Debian** - `.deb` package
 2. **RHEL/Fedora/CentOS** - `.rpm` package
-3. **macOS** - Binary tarball (`.tar.gz`)
-4. **Windows** - MSI installer (`.msi`) and executable zip (`.zip`)
-5. **Source Code** - Source archive in both `.tar.gz` and `.zip` formats
+3. **macOS Intel (x86_64)** - Binary tarball (`.tar.gz`)
+4. **macOS ARM64 (Apple Silicon)** - Binary tarball (`.tar.gz`)
+5. **Windows** - MSI installer (`.msi`) and executable zip (`.zip`)
+6. **Source Code** - Source archive in both `.tar.gz` and `.zip` formats
 
 ## Triggering a Release
 
@@ -68,18 +69,25 @@ The workflow consists of the following jobs:
 - Uses `cargo-generate-rpm` to generate `.rpm` package
 - Uploads package to release
 
-### 4. Build macOS
-- Builds on macOS
-- Creates a tarball with the binary
+### 4. Build macOS Intel
+- Builds on macOS Intel runner (macos-13)
+- Targets x86_64-apple-darwin
+- Creates a tarball with the Intel binary
 - Uploads tarball to release
 
-### 5. Build Windows
+### 5. Build macOS ARM64
+- Builds on macOS ARM64 runner (macos-latest)
+- Targets aarch64-apple-darwin
+- Creates a tarball with the ARM64 binary
+- Uploads tarball to release
+
+### 6. Build Windows
 - Builds on Windows
 - Creates `.msi` installer using WiX Toolset
 - Creates `.zip` archive with executable
 - Uploads both packages to release
 
-### 6. Create Source Archive
+### 7. Create Source Archive
 - Creates source code archives in `.tar.gz` and `.zip` formats
 - Uploads archives to release
 
@@ -114,10 +122,17 @@ wget https://github.com/manoelhc/aaa/releases/download/v1.0.0/aaa-1.0.0-1.x86_64
 sudo rpm -i aaa-1.0.0-1.x86_64.rpm
 ```
 
-### macOS
+### macOS Intel (x86_64)
 ```bash
 wget https://github.com/manoelhc/aaa/releases/download/v1.0.0/aaa-1.0.0-macos-x86_64.tar.gz
 tar -xzf aaa-1.0.0-macos-x86_64.tar.gz
+sudo mv aaa /usr/local/bin/
+```
+
+### macOS ARM64 (Apple Silicon)
+```bash
+wget https://github.com/manoelhc/aaa/releases/download/v1.0.0/aaa-1.0.0-macos-aarch64.tar.gz
+tar -xzf aaa-1.0.0-macos-aarch64.tar.gz
 sudo mv aaa /usr/local/bin/
 ```
 

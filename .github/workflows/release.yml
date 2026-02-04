@@ -124,10 +124,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  build-macos:
-    name: Build macOS Binary
+  build-macos-intel:
+    name: Build macOS Binary (Intel)
     needs: update-version
-    runs-on: macos-latest
+    runs-on: macos-13  # Intel runner
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -139,29 +139,74 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
 
       - name: Update Cargo.lock
         run: cargo update -p aaa
 
-      - name: Build for macOS
-        run: cargo build --release
+      - name: Build for macOS Intel
+        run: cargo build --release --target x86_64-apple-darwin
 
       - name: Create tarball
         run: |
-          cd target/release
+          cd target/x86_64-apple-darwin/release
           tar -czf aaa-${{ needs.update-version.outputs.version }}-macos-x86_64.tar.gz aaa
-          mv aaa-${{ needs.update-version.outputs.version }}-macos-x86_64.tar.gz ../..
+          mv aaa-${{ needs.update-version.outputs.version }}-macos-x86_64.tar.gz ../../..
 
-      - name: Upload macOS binary
+      - name: Upload macOS Intel binary
         uses: actions/upload-artifact@v4
         with:
-          name: macos-binary
-          path: aaa-*.tar.gz
+          name: macos-intel-binary
+          path: aaa-*-macos-x86_64.tar.gz
 
       - name: Upload to release
         uses: softprops/action-gh-release@v1
         with:
-          files: aaa-*.tar.gz
+          files: aaa-*-macos-x86_64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-macos-arm:
+    name: Build macOS Binary (ARM64)
+    needs: update-version
+    runs-on: macos-latest  # ARM64 runner
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download updated Cargo.toml
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-toml-updated
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Update Cargo.lock
+        run: cargo update -p aaa
+
+      - name: Build for macOS ARM64
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Create tarball
+        run: |
+          cd target/aarch64-apple-darwin/release
+          tar -czf aaa-${{ needs.update-version.outputs.version }}-macos-aarch64.tar.gz aaa
+          mv aaa-${{ needs.update-version.outputs.version }}-macos-aarch64.tar.gz ../../..
+
+      - name: Upload macOS ARM64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm-binary
+          path: aaa-*-macos-aarch64.tar.gz
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: aaa-*-macos-aarch64.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
