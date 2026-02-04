@@ -44,9 +44,10 @@ You'll see a menu like this:
 
 ```
 ? Select a profile: ›
-  ➕ Add a new profile
+  ➕ Add a new SSO profile
+  ➕ Add a new credentials profile
      organization1 [SSO]
-     organization2 [SSO]
+     my-dev-account [Standard]
 ```
 
 **Navigation:**
@@ -55,12 +56,13 @@ You'll see a menu like this:
 - Press **Esc** or **Ctrl+C** to cancel
 
 **Options:**
-- **Add a new profile**: Create a new SSO profile with guided prompts
+- **Add a new SSO profile**: Create a new SSO profile with guided prompts
+- **Add a new credentials profile**: Create a new profile with AWS access keys
 - **Select existing profile**: Choose a profile to authenticate and start a shell
 
-### Adding a New Profile
+### Adding a New SSO Profile
 
-When you select "Add a new profile", you'll be prompted for:
+When you select "Add a new SSO profile", you'll be prompted for:
 
 1. **Profile name**: A unique identifier (e.g., `my-org-dev`)
 2. **SSO start URL**: Your AWS SSO portal URL (e.g., `https://my-sso-portal.awsapps.com/start`)
@@ -70,6 +72,17 @@ When you select "Add a new profile", you'll be prompted for:
 6. **Default region**: Default AWS region for this profile (default: `us-east-1`)
 
 After creating the profile, the tool automatically proceeds to authentication!
+
+### Adding a New Credentials Profile
+
+When you select "Add a new credentials profile", you'll be prompted for:
+
+1. **Profile name**: A unique identifier (e.g., `my-dev-account`)
+2. **AWS Access Key ID**: Your AWS access key ID (e.g., AKIA... for permanent credentials, ASIA... for temporary credentials)
+3. **AWS Secret Access Key**: Your AWS secret access key
+4. **Default region**: Default AWS region for this profile (default: `us-east-1`)
+
+The credentials are securely stored in `~/.aws/credentials` and the profile configuration is saved to `~/.aws/config`. After creating the profile, the tool automatically proceeds to authentication!
 
 ### Direct Profile Selection
 
@@ -158,18 +171,19 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 ```bash
 $ aaa
 ? Select a profile: ›
-  ➕ Add a new profile
+  ➕ Add a new SSO profile
+  ➕ Add a new credentials profile
      org1-dev [SSO]
-     org2-prod [SSO]
+     my-dev-account [Standard]
 
 # Use arrow keys to navigate and Enter to select
 ```
 
-### Example 2: Create New Profile
+### Example 2: Create New SSO Profile
 
 ```bash
 $ aaa
-? Select a profile: › ➕ Add a new profile
+? Select a profile: › ➕ Add a new SSO profile
 
 Create New AWS SSO Profile
 
@@ -195,7 +209,34 @@ Starting new shell with AWS credentials...
 # ... shell starts with credentials
 ```
 
-### Example 3: Direct Profile Selection (Skip Menu)
+### Example 3: Create New Credentials Profile
+
+```bash
+$ aaa
+? Select a profile: › ➕ Add a new credentials profile
+
+Create New AWS Credentials Profile
+
+? Profile name: › my-dev-account
+? AWS Access Key ID: › AKIAIOSFODNN7EXAMPLE
+? AWS Secret Access Key: › wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+? Default region: › us-east-1
+
+✓ Profile created successfully!
+
+Using profile: my-dev-account
+
+This is a standard profile. Using credentials from ~/.aws/credentials
+✓ Credentials found in ~/.aws/credentials
+Fetching credentials...
+
+✓ Credentials obtained successfully!
+
+Starting new shell with AWS credentials...
+# ... shell starts with credentials
+```
+
+### Example 4: Direct Profile Selection (Skip Menu)
 
 ```bash
 $ aaa org1-dev
