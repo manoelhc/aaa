@@ -189,14 +189,29 @@ fn create_new_credentials_profile() -> Result<Profile> {
         return Err(anyhow!("Profile name can only contain alphanumeric characters, hyphens, and underscores"));
     }
 
-    // Check if profile already exists
+    // Check if profile already exists in config
     let existing_profiles = parse_aws_config()?;
     if existing_profiles.iter().any(|p| p.name == profile_name) {
-        return Err(anyhow!("Profile '{}' already exists", profile_name));
+        return Err(anyhow!("Profile '{}' already exists in config", profile_name));
+    }
+
+    // Check if profile already exists in credentials file
+    let creds_path = get_aws_credentials_path()?;
+    if creds_path.exists() {
+        let existing_creds = fs::read_to_string(&creds_path)
+            .context("Failed to read existing credentials file")?;
+        
+        // Use a more precise check: look for profile name as a complete section header
+        let profile_section = format!("[{}]", profile_name);
+        for line in existing_creds.lines() {
+            if line.trim() == profile_section {
+                return Err(anyhow!("Profile '{}' already exists in credentials file", profile_name));
+            }
+        }
     }
 
     let access_key_id = Text::new("AWS Access Key ID:")
-        .with_help_message("Your AWS access key ID (starts with AKIA)")
+        .with_help_message("Your AWS access key ID (e.g., AKIA..., ASIA...)")
         .prompt()
         .context("Failed to get access key ID")?
         .trim()
@@ -206,7 +221,8 @@ fn create_new_credentials_profile() -> Result<Profile> {
         return Err(anyhow!("Access Key ID cannot be empty"));
     }
 
-    // Validate access key ID format
+    // Basic validation: Access keys should be alphanumeric
+    // We don't enforce strict format as AWS supports multiple types (AKIA, ASIA, etc.)
     if !access_key_id.chars().all(|c| c.is_alphanumeric()) {
         return Err(anyhow!("Access Key ID should only contain alphanumeric characters"));
     }
@@ -277,9 +293,12 @@ fn save_credentials_to_file(profile_name: &str, access_key_id: &str, secret_acce
         String::new()
     };
 
-    // Check if profile already exists in credentials file
-    if existing_content.contains(&format!("[{}]", profile_name)) {
-        return Err(anyhow!("Profile '{}' already exists in credentials file", profile_name));
+    // Check if profile already exists in credentials file using precise line matching
+    let profile_section = format!("[{}]", profile_name);
+    for line in existing_content.lines() {
+        if line.trim() == profile_section {
+            return Err(anyhow!("Profile '{}' already exists in credentials file", profile_name));
+        }
     }
 
     // Append new credentials
