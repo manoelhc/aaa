@@ -3,7 +3,7 @@ use aws_credential_types::provider::ProvideCredentials;
 use clap::Parser;
 use colored::Colorize;
 use inquire::{Select, Text};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -24,6 +24,34 @@ struct Cli {
 struct AwsConfig {
     #[serde(flatten)]
     sections: HashMap<String, HashMap<String, String>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct OktaYamlConfig {
+    awscli: OktaAwsCli,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct OktaAwsCli {
+    #[serde(default)]
+    profiles: HashMap<String, OktaProfile>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct OktaProfile {
+    #[serde(rename = "org-domain", skip_serializing_if = "Option::is_none")]
+    org_domain: Option<String>,
+    #[serde(rename = "oidc-client-id", skip_serializing_if = "Option::is_none")]
+    oidc_client_id: Option<String>,
+    #[serde(
+        rename = "aws-acct-fed-app-id",
+        skip_serializing_if = "Option::is_none"
+    )]
+    aws_acct_fed_app_id: Option<String>,
+    #[serde(rename = "aws-iam-role", skip_serializing_if = "Option::is_none")]
+    aws_iam_role: Option<String>,
+    #[serde(rename = "aws-iam-idp", skip_serializing_if = "Option::is_none")]
+    aws_iam_idp: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -86,8 +114,9 @@ fn parse_aws_config() -> Result<Vec<Profile>> {
         };
 
         // Determine profile type: Okta, SSO, or Standard
+        // Okta takes precedence if both are present (though this shouldn't happen)
         let is_okta = section_data.contains_key("okta_org_domain");
-        let is_sso = section_data.contains_key("sso_start_url");
+        let is_sso = !is_okta && section_data.contains_key("sso_start_url");
 
         let profile = Profile {
             name: profile_name,
@@ -223,21 +252,21 @@ fn create_new_okta_profile() -> Result<Profile> {
     let okta_aws_account_federation_app_id = Text::new("AWS Account Federation App ID (optional):")
         .with_help_message("ID of the AWS Account Federation integration app (can be empty if OIDC app has okta.users.read.self grant)")
         .prompt()
-        .context("Failed to get AWS Account Federation App ID")?;
+        .context("Failed to prompt for AWS Account Federation App ID")?;
 
     let okta_aws_iam_role = Text::new("AWS IAM Role ARN (optional):")
         .with_help_message(
             "AWS IAM Role ARN to assume (e.g., arn:aws:iam::123456789012:role/MyRole)",
         )
         .prompt()
-        .context("Failed to get AWS IAM role")?;
+        .context("Failed to prompt for AWS IAM role")?;
 
     let okta_aws_iam_idp = Text::new("AWS IAM Identity Provider ARN (optional):")
         .with_help_message(
             "AWS IAM IdP ARN (e.g., arn:aws:iam::123456789012:saml-provider/okta-idp)",
         )
         .prompt()
-        .context("Failed to get AWS IAM IdP")?;
+        .context("Failed to prompt for AWS IAM IdP")?;
 
     let region = Text::new("Default region:")
         .with_default("us-east-1")
@@ -471,43 +500,33 @@ fn create_okta_yaml(profile: &Profile) -> Result<()> {
         fs::create_dir_all(parent).context("Failed to create .okta directory")?;
     }
 
-    // Read existing content or create empty structure
-    let mut yaml_content = if okta_config_path.exists() {
-        fs::read_to_string(&okta_config_path).context("Failed to read existing okta.yaml file")?
+    // Read existing configuration or create a new one
+    let mut config: OktaYamlConfig = if okta_config_path.exists() {
+        let content = fs::read_to_string(&okta_config_path)
+            .context("Failed to read existing okta.yaml file")?;
+        serde_yaml::from_str(&content).unwrap_or_default()
     } else {
-        "---\nawscli:\n  profiles:\n".to_string()
+        OktaYamlConfig::default()
     };
 
-    // Check if we need to initialize the structure
-    if !yaml_content.contains("awscli:") {
-        yaml_content = "---\nawscli:\n  profiles:\n".to_string();
-    } else if !yaml_content.contains("profiles:") {
-        yaml_content = yaml_content.replace("awscli:", "awscli:\n  profiles:");
-    }
+    // Create or update the profile
+    let okta_profile = OktaProfile {
+        org_domain: profile.okta_org_domain.clone(),
+        oidc_client_id: profile.okta_oidc_client_id.clone(),
+        aws_acct_fed_app_id: profile.okta_aws_account_federation_app_id.clone(),
+        aws_iam_role: profile.okta_aws_iam_role.clone(),
+        aws_iam_idp: profile.okta_aws_iam_idp.clone(),
+    };
 
-    // Build profile configuration
-    let mut profile_config = format!("    {}:\n", profile.name);
+    // Insert or replace the profile
+    config
+        .awscli
+        .profiles
+        .insert(profile.name.clone(), okta_profile);
 
-    if let Some(ref org_domain) = profile.okta_org_domain {
-        profile_config.push_str(&format!("      org-domain: \"{}\"\n", org_domain));
-    }
-    if let Some(ref oidc_client_id) = profile.okta_oidc_client_id {
-        profile_config.push_str(&format!("      oidc-client-id: \"{}\"\n", oidc_client_id));
-    }
-    if let Some(ref app_id) = profile.okta_aws_account_federation_app_id {
-        profile_config.push_str(&format!("      aws-acct-fed-app-id: \"{}\"\n", app_id));
-    }
-    if let Some(ref iam_role) = profile.okta_aws_iam_role {
-        profile_config.push_str(&format!("      aws-iam-role: \"{}\"\n", iam_role));
-    }
-    if let Some(ref iam_idp) = profile.okta_aws_iam_idp {
-        profile_config.push_str(&format!("      aws-iam-idp: \"{}\"\n", iam_idp));
-    }
-
-    // Append the new profile configuration
-    yaml_content.push_str(&profile_config);
-
-    // Write the updated content
+    // Write the updated configuration
+    let yaml_content =
+        serde_yaml::to_string(&config).context("Failed to serialize okta.yaml config")?;
     fs::write(&okta_config_path, yaml_content).context("Failed to write okta.yaml file")?;
 
     println!();
