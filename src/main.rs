@@ -591,7 +591,7 @@ fn spawn_shell_with_credentials(profile: &Profile, credentials: HashMap<String, 
     println!("{}", "  - AWS_REGION".dimmed());
     println!("{}", "  - AWS_PROFILE".dimmed());
     println!();
-    println!("{}", "Type 'exit' to return to the original shell.".to_string().yellow());
+    println!("{}", "Type 'exit' to return to the original shell.".yellow());
     println!();
 
     let mut command = Command::new(&shell);
