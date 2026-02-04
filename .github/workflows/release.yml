@@ -1,0 +1,339 @@
+name: Release Multi-Platform Packages
+
+on:
+  release:
+    types: [created]
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write  # Required to upload assets to releases
+
+jobs:
+  update-version:
+    name: Update Cargo.toml version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          # Remove 'v' prefix if present
+          VERSION="${GITHUB_REF#refs/tags/}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Update Cargo.toml version
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          cat Cargo.toml | grep "^version"
+
+      - name: Upload updated Cargo.toml
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-toml-updated
+          path: Cargo.toml
+          retention-days: 1
+
+  build-linux-deb:
+    name: Build Debian/Ubuntu Package
+    needs: update-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download updated Cargo.toml
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-toml-updated
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+
+      - name: Update Cargo.lock
+        run: cargo update -p aaa
+
+      - name: Build .deb package
+        run: cargo deb
+
+      - name: Upload .deb package
+        uses: actions/upload-artifact@v4
+        with:
+          name: debian-package
+          path: target/debian/*.deb
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: target/debian/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-linux-rpm:
+    name: Build RPM Package
+    needs: update-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download updated Cargo.toml
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-toml-updated
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-generate-rpm
+        run: cargo install cargo-generate-rpm
+
+      - name: Update Cargo.lock
+        run: cargo update -p aaa
+
+      - name: Build binary
+        run: cargo build --release
+
+      - name: Strip binary
+        run: strip target/release/aaa
+
+      - name: Generate RPM
+        run: cargo generate-rpm
+
+      - name: Upload .rpm package
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-package
+          path: target/generate-rpm/*.rpm
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: target/generate-rpm/*.rpm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-macos-intel:
+    name: Build macOS Binary (Intel)
+    needs: update-version
+    runs-on: macos-13  # Intel runner
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download updated Cargo.toml
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-toml-updated
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Update Cargo.lock
+        run: cargo update -p aaa
+
+      - name: Build for macOS Intel
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Create tarball
+        run: |
+          cd target/x86_64-apple-darwin/release
+          tar -czf aaa-${{ needs.update-version.outputs.version }}-macos-x86_64.tar.gz aaa
+          mv aaa-${{ needs.update-version.outputs.version }}-macos-x86_64.tar.gz ../../..
+
+      - name: Upload macOS Intel binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-intel-binary
+          path: aaa-*-macos-x86_64.tar.gz
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: aaa-*-macos-x86_64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-macos-arm:
+    name: Build macOS Binary (ARM64)
+    needs: update-version
+    runs-on: macos-latest  # ARM64 runner
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download updated Cargo.toml
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-toml-updated
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Update Cargo.lock
+        run: cargo update -p aaa
+
+      - name: Build for macOS ARM64
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Create tarball
+        run: |
+          cd target/aarch64-apple-darwin/release
+          tar -czf aaa-${{ needs.update-version.outputs.version }}-macos-aarch64.tar.gz aaa
+          mv aaa-${{ needs.update-version.outputs.version }}-macos-aarch64.tar.gz ../../..
+
+      - name: Upload macOS ARM64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm-binary
+          path: aaa-*-macos-aarch64.tar.gz
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: aaa-*-macos-aarch64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    name: Build Windows Packages
+    needs: update-version
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download updated Cargo.toml
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-toml-updated
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Update Cargo.lock
+        run: cargo update -p aaa
+
+      - name: Build for Windows
+        run: cargo build --release
+
+      - name: Install WiX Toolset
+        run: |
+          dotnet tool install --global wix
+          wix --version
+
+      - name: Create WiX configuration
+        shell: bash
+        run: |
+          VERSION="${{ needs.update-version.outputs.version }}"
+          # Convert version to MSI format (X.Y.Z -> X.Y.Z.0, X.Y.Z.W stays as is)
+          MSI_VERSION="$VERSION"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            MSI_VERSION="$VERSION.0"
+          fi
+          cat > aaa.wxs << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+            <Product Id="*" Name="aaa" Language="1033" Version="VERSION_PLACEHOLDER" Manufacturer="manoelhc" UpgradeCode="59b3cb13-e7aa-48d1-9722-1ab5e05dc88b">
+              <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+              <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+              <MediaTemplate EmbedCab="yes" />
+              <Feature Id="ProductFeature" Title="aaa" Level="1">
+                <ComponentGroupRef Id="ProductComponents" />
+              </Feature>
+              <Directory Id="TARGETDIR" Name="SourceDir">
+                <Directory Id="ProgramFiles64Folder">
+                  <Directory Id="INSTALLFOLDER" Name="aaa" />
+                </Directory>
+              </Directory>
+              <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+                <Component Id="ProductComponent" Guid="*">
+                  <File Id="ExecutableFile" Source="target/release/aaa.exe" KeyPath="yes" />
+                  <Environment Id="PATH" Name="PATH" Value="[INSTALLFOLDER]" Permanent="no" Part="last" Action="set" System="yes" />
+                </Component>
+              </ComponentGroup>
+            </Product>
+          </Wix>
+          EOF
+          sed -i "s/VERSION_PLACEHOLDER/$MSI_VERSION/" aaa.wxs
+
+      - name: Build MSI
+        shell: bash
+        run: |
+          wix build aaa.wxs -o aaa-${{ needs.update-version.outputs.version }}-x86_64.msi
+
+      - name: Create ZIP with exe
+        shell: bash
+        run: |
+          cd target/release
+          7z a ../../aaa-${{ needs.update-version.outputs.version }}-windows-x86_64.zip aaa.exe
+
+      - name: Upload Windows packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: |
+            *.msi
+            *.zip
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            *.msi
+            *.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  create-source-archive:
+    name: Create Source Code Archive
+    needs: update-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download updated Cargo.toml
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-toml-updated
+
+      - name: Create source tarball
+        run: |
+          VERSION="${{ needs.update-version.outputs.version }}"
+          mkdir -p aaa-$VERSION
+          cp -r src Cargo.toml Cargo.lock README.md LICENSE aaa-$VERSION/
+          tar -czf aaa-$VERSION-source.tar.gz aaa-$VERSION
+          zip -r aaa-$VERSION-source.zip aaa-$VERSION
+
+      - name: Upload source archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-archives
+          path: |
+            *.tar.gz
+            *.zip
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            aaa-*-source.tar.gz
+            aaa-*-source.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

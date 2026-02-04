@@ -2,6 +2,38 @@
 name = "aaa"
 version = "0.1.0"
 edition = "2021"
+authors = ["manoelhc"]
+description = "AWS Account Alternator - A Rust CLI tool that simplifies AWS profile management and authentication"
+license = "MIT"
+repository = "https://github.com/manoelhc/aaa"
+homepage = "https://github.com/manoelhc/aaa"
+readme = "README.md"
+keywords = ["aws", "cli", "sso", "okta", "credentials"]
+categories = ["command-line-utilities"]
+
+[package.metadata.deb]
+maintainer = "manoelhc"
+copyright = "2024, manoelhc"
+license-file = ["LICENSE", "0"]
+extended-description = """\
+A Rust CLI tool that simplifies AWS profile management and authentication. \
+It supports standard AWS credentials, AWS SSO authentication, and Okta \
+authentication via okta-aws-cli, with an interactive menu for easy profile \
+selection and creation."""
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/aaa", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/aaa/", "644"],
+]
+
+[package.metadata.generate-rpm]
+license = "MIT"
+assets = [
+  { source = "target/release/aaa", dest = "/usr/bin/aaa", mode = "755" },
+  { source = "README.md", dest = "/usr/share/doc/aaa/README.md", mode = "644" },
+]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
