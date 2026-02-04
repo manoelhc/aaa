@@ -193,10 +193,15 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ needs.update-version.outputs.version }}"
+          # Convert version to MSI format (X.Y.Z -> X.Y.Z.0, X.Y.Z.W stays as is)
+          MSI_VERSION="$VERSION"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            MSI_VERSION="$VERSION.0"
+          fi
           cat > aaa.wxs << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-            <Product Id="*" Name="aaa" Language="1033" Version="VERSION_PLACEHOLDER" Manufacturer="manoelhc" UpgradeCode="12345678-1234-1234-1234-123456789012">
+            <Product Id="*" Name="aaa" Language="1033" Version="VERSION_PLACEHOLDER" Manufacturer="manoelhc" UpgradeCode="59b3cb13-e7aa-48d1-9722-1ab5e05dc88b">
               <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
               <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
               <MediaTemplate EmbedCab="yes" />
@@ -217,7 +222,7 @@ jobs:
             </Product>
           </Wix>
           EOF
-          sed -i "s/VERSION_PLACEHOLDER/$VERSION.0/" aaa.wxs
+          sed -i "s/VERSION_PLACEHOLDER/$MSI_VERSION/" aaa.wxs
 
       - name: Build MSI
         shell: bash
