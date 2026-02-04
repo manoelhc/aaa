@@ -478,21 +478,21 @@ async fn authenticate_and_spawn_shell(profile: &Profile) -> Result<()> {
 
     if profile.is_sso {
         println!("{}", "This is an SSO profile. Initiating SSO login...".yellow());
-        sso_login(&profile).await?;
+        sso_login(profile).await?;
     } else {
         println!("{}", "This is a standard profile. Using credentials from ~/.aws/credentials".blue());
-        verify_credentials(&profile)?;
+        verify_credentials(profile)?;
     }
 
     // Get credentials and export to environment
-    let credentials = get_credentials(&profile).await?;
+    let credentials = get_credentials(profile).await?;
     
     println!();
     println!("{}", "✓ Credentials obtained successfully!".green().bold());
     println!();
 
     // Spawn new shell with credentials
-    spawn_shell_with_credentials(&profile, credentials)?;
+    spawn_shell_with_credentials(profile, credentials)?;
 
     Ok(())
 }
@@ -501,7 +501,7 @@ async fn sso_login(profile: &Profile) -> Result<()> {
     println!("Calling AWS SSO login...");
     
     let output = Command::new("aws")
-        .args(&["sso", "login", "--profile", &profile.name])
+        .args(["sso", "login", "--profile", &profile.name])
         .status()
         .context("Failed to execute 'aws sso login'")?;
 
@@ -591,7 +591,7 @@ fn spawn_shell_with_credentials(profile: &Profile, credentials: HashMap<String, 
     println!("{}", "  - AWS_REGION".dimmed());
     println!("{}", "  - AWS_PROFILE".dimmed());
     println!();
-    println!("{}", format!("Type 'exit' to return to the original shell.").yellow());
+    println!("{}", "Type 'exit' to return to the original shell.".to_string().yellow());
     println!();
 
     let mut command = Command::new(&shell);
