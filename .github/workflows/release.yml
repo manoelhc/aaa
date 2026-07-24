@@ -74,7 +74,7 @@ jobs:
           path: target/debian/*.deb
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           files: target/debian/*.deb
         env:
@@ -118,7 +118,7 @@ jobs:
           path: target/generate-rpm/*.rpm
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           files: target/generate-rpm/*.rpm
         env:
@@ -161,7 +161,7 @@ jobs:
           path: aaa-*-macos-x86_64.tar.gz
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           files: aaa-*-macos-x86_64.tar.gz
         env:
@@ -204,7 +204,7 @@ jobs:
           path: aaa-*-macos-aarch64.tar.gz
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           files: aaa-*-macos-aarch64.tar.gz
         env:
@@ -292,7 +292,7 @@ jobs:
             *.zip
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           files: |
             *.msi
@@ -330,7 +330,7 @@ jobs:
             *.zip
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           files: |
             aaa-*-source.tar.gz

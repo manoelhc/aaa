@@ -223,7 +223,7 @@ awscli:
 
 ## Requirements
 
-- Rust 1.70 or later (for building from source)
+- Rust 1.94 or later (for building from source)
 - AWS CLI v2 (required for SSO authentication)
 - `okta-aws-cli` (required for Okta authentication) - [Installation guide](https://github.com/okta/okta-aws-cli#installation)
 - AWS credentials configured in `~/.aws/config` and/or `~/.aws/credentials`
